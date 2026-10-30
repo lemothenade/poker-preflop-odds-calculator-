@@ -1,0 +1,474 @@
+<meta charset="utf-8">
+<title>Hold'em Preflop Odds</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: controls on the left, a felt result panel that stays in view on the right, the full 169-hand chart under both. */
+:root {
+  --bg: #e2eae5; --panel: #f4f8f5; --ink: #10261f; --muted: #4d645b; --line: #c2d0c9;
+  --accent: #0d6650; --on-accent: #f6fbf8;
+  --felt: #0e5443; --felt-ink: #f4f6ee; --felt-muted: #b6d2c6; --felt-line: #2c7360; --gold: #e9c46a;
+  --hot: #a8122c; --cold: #2f6aa8; --on-heat: #ffffff;
+  --good: #0b7a50; --bad: #b3261e;
+  --card: #fdfefc; --card-line: #c9d3cd; --spade: #15211c; --heart: #c4203a; --diamond: #1f63c0; --club: #14804f;
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --body: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1c18; --panel: #12302a; --ink: #e8f1ec; --muted: #9db5ab; --line: #285046;
+    --accent: #46c79c; --on-accent: #06211a;
+    --felt: #0f4a3c; --felt-ink: #f4f6ee; --felt-muted: #a9c8bb; --felt-line: #2c7360; --gold: #e9c46a;
+    --hot: #f0707f; --cold: #6da3dc; --on-heat: #14090b;
+    --good: #57d3a4; --bad: #ff8f85;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1c18; --panel: #12302a; --ink: #e8f1ec; --muted: #9db5ab; --line: #285046;
+  --accent: #46c79c; --on-accent: #06211a;
+  --felt: #0f4a3c; --felt-ink: #f4f6ee; --felt-muted: #a9c8bb; --felt-line: #2c7360; --gold: #e9c46a;
+  --hot: #f0707f; --cold: #6da3dc; --on-heat: #14090b;
+  --good: #57d3a4; --bad: #ff8f85;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.5 var(--body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.wrap {
+  max-width: 1120px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 40px;
+  display: grid; gap: 28px;
+}
+header h1 { font: 900 clamp(2.4rem, 7vw, 3.6rem)/1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+header p { margin: 6px 0 0; color: var(--muted); }
+
+.mini {
+  display: none; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--felt); color: var(--felt-ink); border-radius: 6px; padding: 8px 14px;
+  justify-content: space-between; align-items: center; gap: 12px; font-weight: 600;
+}
+.mini b { font: 900 1.6rem/1 var(--display); color: var(--gold); }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 32px; align-items: start; }
+.controls { display: grid; gap: 28px; min-width: 0; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 10px; }
+legend, .label { font-weight: 700; padding: 0; }
+legend { margin-bottom: 10px; font-size: 1.05rem; }
+.hint { color: var(--muted); font-size: .9rem; margin: 0; }
+
+/* Hand */
+.hand { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.slot {
+  width: 70px; height: 98px; border-radius: 8px; flex: none; position: relative;
+  background: var(--card); border: 1px solid var(--card-line); box-shadow: 0 2px 6px rgb(0 0 0 / .18);
+  font-weight: 700;
+}
+.slot.empty { background: transparent; border: 2px dashed var(--line); box-shadow: none; }
+.slot .r { position: absolute; top: 6px; left: 9px; font: 900 1.6rem/1 var(--display); }
+.slot .s { position: absolute; right: 9px; bottom: 6px; font-size: 2.1rem; line-height: 1; }
+.slot.deal { animation: deal .18s ease-out; }
+@keyframes deal { from { transform: translateY(-8px) rotate(-3deg); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .slot.deal { animation: none; } }
+.hand-name { min-width: 0; flex: 1 1 160px; }
+.hand-name strong { display: block; font-size: 1.1rem; }
+
+.deck { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); gap: 3px; }
+.c {
+  height: 46px; padding: 0; border: 1px solid var(--card-line); border-radius: 4px; background: var(--card);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05;
+  font-weight: 700; font-size: .92rem;
+}
+.c span { font-size: .85rem; }
+.c:hover { border-color: var(--accent); }
+.c[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent) !important; }
+.spade { color: var(--spade); } .heart { color: var(--heart); } .diamond { color: var(--diamond); } .club { color: var(--club); }
+
+/* Players and yes/no choices */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  width: 42px; height: 42px; border-radius: 50%; border: 2px dashed var(--line); background: var(--panel);
+  font: 700 1.25rem/1 var(--display);
+}
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border: 2px solid var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); width: fit-content; }
+.seg button { border: 0; background: none; padding: 8px 22px; font-weight: 600; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.field { display: grid; gap: 4px; align-content: start; }
+.field label { font-size: .92rem; font-weight: 600; }
+.field input {
+  width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Result */
+.result { background: var(--felt); color: var(--felt-ink); border-radius: 10px; padding: 22px 24px; display: grid; gap: 16px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); min-width: 0; }
+.over { font-weight: 600; color: var(--felt-muted); }
+.pct { font: 900 clamp(5.5rem, 16vw, 8.5rem)/.9 var(--display); color: var(--gold); font-variant-numeric: tabular-nums; }
+.pct small { font-size: .5em; font-weight: 700; }
+.compare { margin: 6px 0 0; }
+.bar { position: relative; height: 16px; border-radius: 3px; background: rgb(255 255 255 / .16); display: flex; }
+.bar i { display: block; height: 100%; }
+.bar .w { background: var(--gold); border-radius: 3px 0 0 3px; }
+.bar .t { background: var(--felt-ink); }
+.bar .tick { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--felt-ink); }
+.bar-key { display: flex; justify-content: space-between; gap: 10px; font-size: .85rem; color: var(--felt-muted); margin-top: 8px; flex-wrap: wrap; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.stats div { min-width: 0; }
+.stats dt { font-size: .8rem; color: var(--felt-muted); }
+.stats dd { margin: 0; font: 700 1.5rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.verdict { border-top: 1px solid var(--felt-line); padding-top: 14px; display: grid; gap: 6px; }
+.verdict h2 { margin: 0; font: 900 1.9rem/1 var(--display); letter-spacing: .01em; }
+.verdict p { margin: 0; }
+.pill { display: inline-block; font: 700 .8rem/1 var(--body); text-transform: uppercase; letter-spacing: .06em; padding: 5px 9px; border-radius: 3px; background: var(--felt-ink); color: var(--felt); width: fit-content; }
+
+/* Chart */
+.chart { display: grid; gap: 12px; min-width: 0; }
+.chart h2 { margin: 0; font: 900 2rem/1 var(--display); text-wrap: balance; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 14px; border-radius: 2px; display: inline-block; }
+.grid { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); gap: 2px; }
+.g {
+  aspect-ratio: 1; max-width: 100%; padding: 0; border: 0; border-radius: 3px; min-width: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
+  font-weight: 700; font-size: clamp(.56rem, 1.5vw, .86rem);
+}
+.g small { font-size: .78em; font-weight: 500; font-variant-numeric: tabular-nums; }
+.g[aria-pressed="true"] { outline: 3px solid var(--ink); outline-offset: -1px; position: relative; z-index: 1; }
+.notes { color: var(--muted); font-size: .92rem; max-width: 68ch; display: grid; gap: 8px; }
+.notes p { margin: 0; }
+
+@media (max-width: 860px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .result { position: static; }
+  .mini { display: flex; }
+}
+@media (max-width: 620px) {
+  .g small { display: none; }
+  .c { font-size: .82rem; height: 44px; }
+  .c span { font-size: .74rem; }
+  .deck { gap: 2px; }
+  .chips { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; }
+  .chip { width: 100%; height: auto; aspect-ratio: 1; font-size: 1.1rem; }
+}
+@media (max-width: 380px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Hold'em Preflop Odds</h1>
+    <p>Enter your two cards and the table. See your chance of winning before the flop.</p>
+  </header>
+
+  <div class="mini" aria-hidden="true"><span id="miniText"></span><b id="miniPct"></b></div>
+
+  <div class="main">
+    <div class="controls">
+      <fieldset>
+        <legend>Your hand</legend>
+        <div class="hand">
+          <div class="slot" id="slot0"></div>
+          <div class="slot" id="slot1"></div>
+          <div class="hand-name">
+            <strong id="handName"></strong>
+            <p class="hint" id="handHint">Sample hand. Tap any two cards to use yours.</p>
+          </div>
+        </div>
+        <div class="deck" id="deck"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Players at the table, counting you</legend>
+        <div class="chips" id="players"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Did you already put money in?</legend>
+        <div class="seg">
+          <button type="button" id="inNo" aria-pressed="false">No</button>
+          <button type="button" id="inYes" aria-pressed="true">Yes</button>
+        </div>
+        <div class="fields">
+          <div class="field" id="mineField">
+            <label for="mine">Your money already in</label>
+            <input id="mine" type="number" min="0" step="any" inputmode="decimal" value="2">
+          </div>
+          <div class="field">
+            <label for="others">Other players' money in the pot</label>
+            <input id="others" type="number" min="0" step="any" inputmode="decimal" value="9">
+          </div>
+          <div class="field">
+            <label for="call">Cost for you to call</label>
+            <input id="call" type="number" min="0" step="any" inputmode="decimal" value="4">
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <section class="result" aria-live="polite">
+      <div>
+        <div class="over" id="over"></div>
+        <div class="pct" id="pct"></div>
+        <p class="compare" id="compare"></p>
+      </div>
+      <div>
+        <div class="bar" aria-hidden="true">
+          <i class="w" id="barWin"></i><i class="t" id="barTie"></i>
+          <i class="tick" id="barTick"></i>
+        </div>
+        <div class="bar-key"><span id="keyFair"></span></div>
+      </div>
+      <dl class="stats">
+        <div><dt>Win outright</dt><dd id="sWin"></dd></div>
+        <div><dt>Split pot</dt><dd id="sTie"></dd></div>
+        <div><dt>Lose</dt><dd id="sLose"></dd></div>
+        <div><dt>Hand rank</dt><dd id="sRank"></dd></div>
+      </dl>
+      <div class="verdict" id="verdict">
+        <span class="pill" id="vPill"></span>
+        <h2 id="vHead"></h2>
+        <p id="vBody"></p>
+        <p id="vSunk"></p>
+      </div>
+    </section>
+  </div>
+
+  <section class="chart">
+    <h2 id="chartTitle"></h2>
+    <div class="legend">
+      <span><i style="background: var(--hot)"></i>Wins more than an even share</span>
+      <span><i style="background: var(--cold)"></i>Wins less than an even share</span>
+      <span>Top right: same suit. Bottom left: different suits.</span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <div class="notes">
+    <p>Each percentage comes from 400,000 simulated deals. Split pots count as your share of the pot.</p>
+    <p>The numbers assume every player stays to the end with random cards. Real players fold weak hands, so anyone who raises usually holds better than random, and your true chance is lower.</p>
+    <p>The call advice compares your chance with the price of calling. It assumes nobody raises after you.</p>
+  </div>
+</div>
+
+<script>
+// [win, tie, share] in tenths of a percent, for 13x13 hands (A down to 2) by table size 2 to 10.
+const ODDS = [850,5,852,732,5,734,636,5,638,557,6,559,490,6,492,434,5,436,385,5,387,344,5,346,309,5,311,663,17,671,498,19,507,405,20,414,345,20,354,302,20,311,268,20,277,241,20,250,218,19,227,199,19,207,654,18,663,484,21,494,388,23,399,327,23,337,283,23,293,250,23,260,224,22,234,202,22,212,183,22,193,645,20,655,471,24,482,372,25,384,310,26,322,267,26,278,234,25,246,209,25,221,188,25,200,171,24,182,635,22,646,457,27,470,358,29,371,296,29,309,253,29,266,221,28,234,197,28,209,177,27,190,161,27,173,614,26,627,431,30,445,330,31,345,269,31,283,228,30,241,198,29,211,175,28,188,157,28,169,142,27,154,605,29,619,418,34,434,318,34,334,258,33,273,217,32,232,189,31,203,166,30,180,149,29,162,135,28,147,594,32,610,407,37,425,308,37,325,248,36,265,208,35,224,180,34,196,159,33,174,143,32,157,129,30,143,581,34,598,393,39,411,295,38,313,237,37,254,199,36,216,173,35,189,153,34,168,137,32,152,125,31,139,580,37,599,395,42,414,299,40,318,242,39,260,205,37,222,179,36,195,158,35,174,143,33,158,130,32,145,572,38,591,385,41,405,290,40,309,235,38,253,199,36,216,174,35,190,155,33,170,140,32,154,128,30,142,564,38,582,378,40,397,284,39,303,231,37,248,196,35,212,171,33,187,153,31,167,139,30,152,127,28,140,556,38,575,369,40,389,277,38,295,225,36,241,191,33,206,167,31,182,149,30,163,135,28,148,124,26,135,645,17,654,473,20,482,376,20,386,314,21,323,269,21,278,234,20,244,207,20,216,183,20,192,163,20,172,821,5,824,687,6,689,580,6,582,495,6,497,426,6,429,371,6,374,326,6,329,289,6,291,258,6,261,625,19,634,461,22,471,372,22,382,314,22,324,273,22,283,241,21,251,215,21,225,194,21,203,176,21,185,613,22,624,447,24,458,356,25,367,299,25,310,258,24,269,227,24,238,203,24,214,182,24,193,166,24,176,606,24,618,436,27,448,343,28,356,286,27,298,245,27,257,215,27,227,192,26,204,173,26,185,157,26,169,585,27,599,407,30,421,315,29,328,258,28,271,220,27,232,190,26,202,169,26,180,151,25,163,138,24,148,567,30,582,385,32,400,292,31,306,237,30,250,200,29,213,173,28,186,152,27,165,136,27,148,124,26,135,557,34,574,375,36,392,283,34,299,228,33,243,192,31,206,166,30,179,146,29,159,131,28,143,118,28,131,549,36,567,366,37,384,275,36,291,221,34,237,186,32,201,161,31,175,142,30,156,127,30,140,116,28,128,540,39,559,356,40,374,266,37,283,214,35,230,180,34,196,156,32,171,138,31,152,124,30,137,113,29,125,530,40,550,346,40,365,257,37,275,208,35,223,175,32,190,152,30,166,135,29,148,122,28,134,111,26,123,520,40,540,338,40,356,251,36,268,203,33,218,171,30,185,149,29,162,132,27,145,120,26,131,109,24,120,514,39,534,332,38,351,247,35,263,200,31,214,170,29,183,148,27,161,132,25,144,120,24,131,110,23,120,635,18,644,458,22,468,358,23,368,293,24,304,248,24,259,213,24,224,186,23,196,163,23,174,144,23,155,604,21,614,434,23,445,342,23,353,283,23,293,241,23,251,208,22,218,181,22,191,160,22,169,142,22,151,797,6,800,646,6,649,531,7,534,443,7,446,375,7,378,321,7,325,279,8,282,245,8,249,218,8,222,593,24,605,432,25,443,347,25,358,291,25,302,252,25,263,221,24,232,197,24,208,177,24,188,161,24,172,582,26,595,418,27,431,333,27,345,278,27,290,240,26,252,211,26,223,188,26,200,169,26,181,155,26,166,562,29,576,393,29,406,305,28,318,251,27,263,214,26,226,186,26,198,164,25,176,148,25,159,134,24,145,545,32,561,370,33,385,284,30,298,231,29,244,195,28,208,170,27,182,150,26,161,134,26,146,122,25,133,525,35,542,348,35,364,261,32,276,211,30,225,177,29,190,153,28,165,135,27,147,121,27,133,110,26,121,517,39,536,340,37,357,254,35,270,205,32,219,172,31,186,148,30,161,130,29,143,116,28,129,106,27,117,507,41,528,330,39,349,246,36,262,197,33,212,166,31,180,143,30,157,126,29,139,113,28,126,103,28,115,498,42,519,322,39,340,240,35,256,193,32,208,162,31,176,141,29,154,124,28,137,111,27,123,102,26,113,489,42,510,315,39,333,235,34,250,189,31,203,159,29,172,138,27,151,123,26,134,111,25,122,101,24,112,481,42,501,306,38,323,227,33,241,183,29,196,154,27,167,135,25,146,120,24,131,109,22,119,100,21,109,625,20,635,442,25,454,341,26,353,276,27,288,231,27,243,197,27,209,171,26,183,149,26,161,132,26,143,596,22,607,420,25,432,326,26,338,267,26,278,224,26,236,192,25,204,167,25,178,146,25,157,129,25,140,568,24,581,401,26,413,313,26,325,258,25,269,218,25,229,187,25,198,162,25,174,142,25,154,126,25,137,771,6,775,609,7,612,489,8,493,400,8,404,333,8,337,282,8,286,243,9,247,213,9,217,190,9,194,560,28,574,406,28,419,325,27,338,273,27,286,236,27,248,207,27,219,185,27,197,167,27,179,153,27,165,541,31,556,380,30,394,299,29,312,248,28,261,212,27,224,185,27,197,164,26,176,148,26,159,135,25,146,523,34,540,359,32,374,278,30,292,228,28,241,193,28,205,167,27,180,148,27,160,133,26,145,121,26,132,504,37,522,338,35,354,257,31,272,209,29,222,176,29,189,152,28,164,134,27,146,120,26,132,109,26,121,486,41,507,318,37,335,238,33,253,191,31,205,160,29,173,138,29,151,121,28,134,109,27,121,99,27,111,477,44,499,309,38,327,231,34,247,185,32,199,155,30,168,133,29,146,117,29,130,105,28,117,95,28,107,469,44,491,301,38,319,225,33,240,180,31,194,151,29,165,131,28,144,116,27,128,104,26,116,95,26,106,460,44,482,295,37,312,219,32,233,176,29,189,148,28,160,128,26,140,114,25,125,102,24,113,93,23,104,451,43,473,287,36,303,214,31,227,172,28,184,145,26,157,127,24,137,113,23,123,102,22,112,93,21,102,615,24,627,429,29,443,327,30,341,262,31,276,218,31,232,184,30,198,159,30,172,138,29,151,121,29,134,584,25,597,406,28,419,311,28,324,251,28,264,210,28,222,178,28,191,154,28,166,135,28,147,118,27,131,559,27,572,387,29,401,299,28,312,243,28,256,203,28,216,173,27,185,149,27,161,130,27,143,116,27,128,539,29,553,377,29,391,295,28,307,241,28,253,202,28,215,173,28,186,151,28,163,133,28,145,118,29,131,746,7,750,572,8,576,449,8,452,360,9,364,296,9,300,248,10,252,213,10,217,186,11,191,167,11,171,522,33,539,373,31,386,295,29,308,246,28,259,211,27,223,184,27,196,164,27,176,149,27,161,136,26,148,505,37,523,352,33,367,275,30,288,227,29,240,193,28,206,168,28,180,149,27,162,135,27,147,123,27,135,487,40,507,332,34,347,255,32,269,208,30,222,176,29,189,153,28,165,135,28,147,122,27,134,111,27,123,468,43,489,309,36,326,234,32,248,189,30,202,158,29,171,137,28,150,121,28,133,109,27,121,99,27,111,450,45,473,290,38,307,218,33,232,174,31,188,146,30,160,126,29,139,111,29,124,100,29,112,90,28,103,441,47,464,285,38,303,213,32,228,171,30,185,143,29,156,124,28,136,109,27,121,98,27,110,89,26,101,435,46,458,279,36,296,209,31,222,168,28,180,141,27,153,122,26,134,108,26,120,98,25,109,89,24,100,425,46,448,270,36,287,202,30,216,164,27,176,138,25,149,120,24,131,107,23,117,96,23,106,88,22,98,595,27,608,401,32,416,296,32,311,232,32,247,189,32,203,157,31,171,134,30,147,115,29,128,100,29,112,563,28,577,377,31,391,281,30,295,222,29,235,181,29,194,151,28,163,128,27,141,111,26,122,96,26,108,539,30,554,362,31,376,271,30,285,215,29,228,177,28,189,148,27,160,126,27,138,109,26,121,95,26,106,516,32,532,349,31,363,265,29,278,212,28,224,174,28,187,147,27,159,126,27,138,110,27,122,97,26,109,498,35,515,342,32,357,263,30,276,212,30,225,176,29,189,149,29,162,129,28,142,113,28,126,100,28,113,717,8,721,533,8,537,409,8,412,323,8,326,263,8,267,221,8,224,191,8,194,169,8,172,152,9,156,487,39,507,345,31,360,271,29,284,224,27,236,190,26,202,166,25,177,148,24,159,134,24,144,123,23,133,469,42,490,325,34,341,254,30,267,208,28,221,176,27,188,154,26,166,137,25,149,125,24,135,114,24,125,452,46,474,306,36,322,235,31,249,191,28,204,162,27,174,141,26,152,125,25,136,113,24,124,104,24,114,432,48,456,286,36,302,217,31,231,175,28,188,148,27,159,128,26,140,114,25,125,102,24,113,93,24,104,413,49,437,266,36,282,199,30,212,160,28,172,134,26,145,116,25,127,103,24,113,92,23,103,84,23,94,408,50,433,263,36,279,195,30,209,157,27,169,131,25,143,114,24,124,101,23,111,91,22,101,83,21,92,401,48,425,255,35,271,190,28,202,153,25,164,128,23,139,112,21,121,99,20,108,90,19,98,82,19,90,583,30,598,387,36,404,282,36,299,219,35,235,176,34,192,146,33,161,123,32,138,105,31,119,92,30,105,543,32,559,353,34,369,256,33,271,199,31,213,160,30,174,133,29,146,112,29,125,96,28,108,83,27,95,520,34,537,337,34,353,247,32,262,193,30,207,156,29,169,130,29,142,109,28,122,93,27,106,81,27,93,496,36,514,324,34,340,240,31,254,189,29,202,153,29,166,128,28,140,109,27,121,94,27,106,82,26,94,478,38,497,318,34,334,240,31,254,190,30,204,156,29,169,131,29,144,112,28,125,98,28,111,87,28,99,462,40,482,314,34,329,238,30,251,189,28,202,156,27,168,131,26,143,113,25,124,99,25,110,88,24,99,686,9,691,495,9,499,372,8,375,290,8,294,236,8,239,199,8,202,173,8,176,154,8,158,140,8,144,457,45,479,323,34,338,253,30,266,209,28,221,178,26,190,156,25,168,140,24,151,127,24,138,118,23,128,438,48,462,304,35,319,236,30,249,193,28,206,165,26,177,145,25,156,130,24,141,118,24,129,109,23,119,419,51,444,284,36,300,218,31,231,177,28,189,150,26,162,132,25,143,118,24,129,107,23,118,99,23,109,401,52,427,266,36,282,202,30,215,163,27,175,137,25,148,120,24,130,107,23,117,97,22,106,89,21,98,384,52,410,250,35,265,187,28,199,151,25,162,127,23,138,111,22,120,98,21,108,89,21,98,81,20,90,378,52,404,243,34,259,181,28,194,146,25,157,123,23,133,108,21,117,96,20,105,87,19,96,80,18,88,571,34,588,374,39,392,269,39,288,207,38,225,167,36,183,138,35,154,116,34,131,99,33,114,86,31,100,534,35,552,342,37,360,245,36,262,189,34,204,151,32,166,124,31,138,103,30,117,88,29,101,76,28,89,498,37,517,313,37,330,223,34,239,171,32,185,136,30,149,111,30,124,92,29,105,78,28,91,67,28,79,477,40,497,303,36,320,219,33,234,169,31,183,136,30,149,111,29,124,94,29,106,80,28,92,69,28,81,457,41,478,295,36,311,217,33,232,169,31,183,137,30,151,113,30,127,96,29,109,83,29,96,73,29,86,440,44,462,290,35,306,216,31,230,170,29,183,138,28,150,116,26,128,100,26,111,87,25,98,78,24,89,428,47,452,289,35,305,217,31,231,172,29,184,141,27,153,119,26,130,103,25,114,91,24,102,82,24,92,657,10,662,461,9,464,339,9,343,264,8,267,215,8,218,183,8,186,161,8,164,144,8,148,133,8,136,428,51,453,303,34,319,237,29,250,196,27,208,167,25,179,147,24,158,133,23,143,121,23,132,112,23,122,408,55,436,284,36,300,221,30,234,181,28,194,156,26,167,138,24,148,124,24,134,113,23,124,105,23,115,391,55,419,267,35,283,205,29,218,168,26,179,143,24,154,126,23,136,114,22,123,104,21,113,95,21,105,374,54,401,249,34,264,189,27,200,153,24,163,130,22,139,114,21,123,102,20,111,92,19,101,85,19,93,353,55,380,230,33,245,172,27,184,139,24,149,118,21,127,103,20,112,93,19,101,84,18,92,77,18,85,558,37,576,359,41,379,256,41,275,196,39,214,156,38,173,128,37,145,108,35,124,92,34,108,80,33,95,523,38,542,330,39,348,234,37,251,178,35,195,143,33,158,117,33,132,98,31,112,83,30,97,72,29,85,491,40,511,305,39,323,216,36,232,164,33,179,129,32,144,105,31,119,88,30,101,74,29,87,64,29,76,456,43,478,279,38,296,197,34,212,150,32,164,118,31,132,96,30,109,79,30,93,67,30,80,57,29,70,438,45,461,274,37,291,196,33,211,150,31,164,119,30,133,98,30,111,82,30,95,70,29,83,60,29,73,422,48,446,270,37,286,196,32,210,152,30,165,122,28,135,101,27,113,86,26,97,74,26,86,66,25,77,408,51,433,269,36,285,199,31,213,156,29,169,127,27,139,106,26,118,92,25,103,81,25,92,72,25,83,396,54,423,268,36,284,200,31,214,157,29,170,129,27,141,110,26,121,96,25,107,85,25,96,77,24,88,627,11,633,428,10,432,312,9,315,242,8,245,198,8,201,169,8,173,150,8,154,137,8,141,127,9,131,402,56,431,287,35,302,224,30,237,185,27,197,159,25,170,141,24,152,128,23,138,117,23,127,109,22,119,385,57,414,270,34,285,209,29,221,172,26,183,148,23,159,132,22,142,120,21,129,110,21,119,102,20,111,368,57,396,252,34,267,193,27,204,158,24,168,135,22,145,120,21,129,109,20,117,100,19,108,92,19,100,348,56,376,234,33,248,177,26,188,144,22,154,123,20,132,109,19,117,98,18,106,90,17,97,83,17,90,558,39,577,360,44,381,260,42,280,201,40,219,162,39,180,134,38,152,114,37,131,98,35,114,86,34,101,512,42,533,319,42,339,226,39,244,172,36,189,137,35,153,112,34,128,94,32,109,80,31,94,69,30,83,480,43,502,295,41,314,207,37,224,157,34,173,124,33,139,101,31,115,84,30,98,71,30,84,61,29,74,449,46,472,272,40,291,191,36,207,144,33,159,113,32,127,91,31,105,75,30,89,63,30,76,54,29,67,419,48,443,253,39,271,178,34,194,134,32,149,105,32,119,84,31,98,70,31,83,59,31,72,50,30,63,400,50,425,248,38,265,176,32,191,134,30,147,105,29,118,86,27,99,72,27,84,62,26,74,54,25,65,387,54,414,248,37,264,179,32,194,138,29,152,111,28,124,93,26,104,79,25,91,69,25,80,61,25,72,376,56,404,248,36,264,183,31,196,143,28,155,117,27,129,99,26,110,86,25,97,77,24,87,69,24,80,370,59,400,251,37,267,186,31,200,147,28,159,121,26,133,104,25,115,91,24,102,81,24,92,74,23,84,596,14,603,397,10,401,286,9,289,220,8,223,182,8,185,157,8,160,141,8,144,129,8,133,120,9,124,385,59,414,274,35,289,213,30,226,176,26,188,153,25,164,137,23,147,124,22,134,115,22,124,106,22,116,367,58,396,258,34,273,199,28,211,165,25,175,143,23,153,128,21,137,116,20,125,107,20,116,99,20,108,350,58,380,241,33,256,184,26,196,152,23,162,132,21,141,118,20,126,107,19,115,98,18,106,91,18,99,548,40,568,351,43,372,252,42,272,194,40,213,157,38,174,130,37,147,111,35,127,96,34,111,84,32,99,502,42,523,310,42,330,218,38,236,166,35,183,132,34,148,108,32,123,91,31,105,78,30,91,67,28,80,470,44,492,285,41,304,199,36,216,151,33,166,119,32,134,98,30,111,82,29,95,69,28,82,60,27,72,440,46,463,265,40,284,185,35,201,139,32,154,110,30,124,90,29,103,74,28,87,63,27,75,54,27,65,410,49,434,246,39,264,171,34,187,129,31,143,101,30,115,82,29,95,68,29,81,57,28,70,49,28,61,380,51,405,228,38,245,158,32,172,118,29,131,92,27,104,75,26,86,62,25,73,53,25,63,45,24,56,368,54,395,227,37,244,161,31,174,122,28,134,97,26,108,80,24,91,68,24,78,58,23,69,51,22,61,356,58,385,228,37,244,164,30,177,126,27,138,102,25,113,86,24,96,74,23,84,65,22,75,58,22,68,350,61,381,232,36,248,170,30,183,133,27,144,109,24,120,93,23,103,82,22,92,74,21,83,67,21,76,352,62,382,238,36,254,176,31,189,139,27,151,115,26,127,99,24,110,88,23,98,79,23,89,72,23,82,563,15,571,364,11,369,260,9,263,203,8,206,170,7,173,149,7,152,136,7,139,126,7,129,119,7,121,358,58,387,251,33,265,193,26,204,160,23,170,139,21,148,124,19,133,113,18,121,104,18,112,97,18,105,340,58,369,233,32,247,179,25,190,148,21,157,128,19,137,115,17,123,105,16,112,97,16,104,90,16,96,538,40,558,342,43,362,245,41,264,190,38,207,154,36,170,129,35,145,110,33,125,95,31,109,84,30,97,494,42,514,303,41,323,213,37,230,162,34,177,130,31,144,107,30,121,90,29,103,78,27,90,68,26,79,459,45,482,276,40,294,192,35,208,145,32,160,116,29,129,95,28,107,80,27,92,68,26,79,59,25,70,429,46,452,255,39,273,177,34,192,133,31,147,105,29,117,85,28,98,71,26,83,60,26,72,52,25,63,400,48,425,237,38,255,165,32,180,124,30,137,98,28,110,79,28,91,65,27,77,56,26,67,48,26,59,374,52,401,222,38,239,154,31,168,115,28,128,90,27,102,73,25,84,61,24,71,51,23,61,44,22,54,348,54,375,208,36,224,144,30,157,107,27,119,84,25,95,69,24,79,58,23,67,49,22,59,43,21,52,338,58,367,209,36,225,147,29,160,111,26,123,89,23,99,74,22,84,64,21,73,55,20,64,49,20,58,331,60,361,213,35,228,153,29,165,118,25,129,96,23,106,81,21,91,71,20,80,63,20,72,57,20,65,332,62,363,219,35,234,159,29,172,125,26,136,104,24,114,89,23,99,78,22,88,70,21,80,64,21,73,320,61,350,210,34,225,152,27,164,119,24,129,98,21,108,85,20,93,75,19,83,67,19,75,61,18,69,529,17,538,331,11,336,236,9,239,187,7,189,160,6,162,144,6,146,133,5,135,124,5,126,118,5,120,331,58,360,225,31,238,172,23,181,142,19,150,123,17,130,111,15,117,101,14,107,93,13,99,86,13,92,529,40,549,331,42,351,235,39,254,181,37,198,146,34,162,122,32,137,104,30,118,90,29,103,79,27,92,486,42,507,294,41,313,205,36,222,156,33,171,125,31,139,104,29,117,88,27,100,76,25,87,66,24,77,451,44,473,268,39,286,185,34,200,140,30,153,112,28,124,92,26,104,77,25,88,66,23,77,58,22,68,421,46,444,248,38,266,172,33,187,130,30,143,103,28,115,84,26,96,71,25,82,61,24,71,53,23,62,394,48,418,230,37,247,159,32,173,120,28,132,94,27,106,77,26,88,64,25,75,55,24,65,48,24,58,365,51,391,214,36,230,147,30,160,110,26,121,86,24,97,71,23,81,59,21,69,50,21,59,44,20,52,341,55,368,202,36,218,139,29,152,104,26,115,82,23,92,66,22,76,56,21,65,48,20,57,42,19,50,317,58,346,190,35,205,130,28,143,97,25,108,76,22,86,63,21,72,53,20,62,46,19,54,40,19,48,311,60,341,192,34,207,134,27,146,102,23,112,82,21,91,69,19,77,59,18,67,52,17,60,46,17,54,312,62,343,199,35,214,142,28,154,110,24,120,91,22,100,78,20,86,68,19,77,61,19,69,55,19,63,300,62,331,191,33,206,136,26,147,106,22,115,87,19,95,75,18,82,66,17,73,59,16,66,53,16,60,292,61,323,184,32,197,130,24,140,100,20,108,82,17,89,71,16,77,62,15,68,55,14,61,50,14,56,494,19,503,302,12,306,217,8,219,175,7,177,153,5,155,140,5,141,131,4,132,124,4,125,118,3,119];
+
+const RANKS = 'AKQJT98765432';
+const RANK_NAMES = { A: 'Ace', K: 'King', Q: 'Queen', J: 'Jack', T: 'Ten', 9: 'Nine', 8: 'Eight', 7: 'Seven', 6: 'Six', 5: 'Five', 4: 'Four', 3: 'Three', 2: 'Two' };
+const SUITS = {
+  s: { sym: '♠︎', cls: 'spade', name: 'spades' },
+  h: { sym: '♥︎', cls: 'heart', name: 'hearts' },
+  d: { sym: '♦︎', cls: 'diamond', name: 'diamonds' },
+  c: { sym: '♣︎', cls: 'club', name: 'clubs' },
+};
+const $ = (id) => document.getElementById(id);
+const state = { cards: ['As', 'Kd'], players: 6, alreadyIn: true };
+
+const odds = (idx, players) => {
+  const at = (idx * 9 + players - 2) * 3;
+  return { win: ODDS[at] / 10, tie: ODDS[at + 1] / 10, share: ODDS[at + 2] / 10 };
+};
+const combos = (idx) => {
+  const i = Math.floor(idx / 13), j = idx % 13;
+  return i === j ? 6 : i < j ? 4 : 12;
+};
+const handIndex = (a, b) => {
+  const r1 = RANKS.indexOf(a[0]), r2 = RANKS.indexOf(b[0]);
+  const hi = Math.min(r1, r2), lo = Math.max(r1, r2);
+  return a[1] === b[1] ? hi * 13 + lo : lo * 13 + hi;
+};
+const label = (idx) => {
+  const i = Math.floor(idx / 13), j = idx % 13;
+  if (i === j) return RANKS[i] + RANKS[i];
+  return i < j ? RANKS[i] + RANKS[j] + 's' : RANKS[j] + RANKS[i] + 'o';
+};
+const topShare = (idx, players) => {
+  const mine = odds(idx, players).share;
+  let n = 0;
+  for (let h = 0; h < 169; h++) if (odds(h, players).share >= mine) n += combos(h);
+  return n / 1326 * 100;
+};
+const pc = (x) => x.toFixed(1) + '%';
+const money = (x) => String(Number(x.toFixed(2)));
+const num = (id) => Math.max(0, parseFloat($(id).value) || 0);
+
+function drawSlot(i, animate) {
+  const el = $('slot' + i), card = state.cards[i];
+  el.className = 'slot' + (card ? '' : ' empty') + (card && animate ? ' deal' : '');
+  if (!card) { el.textContent = ''; return; }
+  const s = SUITS[card[1]];
+  el.innerHTML = `<span class="r ${s.cls}">${card[0] === 'T' ? '10' : card[0]}</span><span class="s ${s.cls}">${s.sym}</span>`;
+}
+
+function handName(a, b) {
+  const hi = RANKS.indexOf(a[0]) <= RANKS.indexOf(b[0]) ? a : b;
+  const lo = hi === a ? b : a;
+  if (a[0] === b[0]) return `Pair of ${RANK_NAMES[a[0]] === 'Six' ? 'Sixes' : RANK_NAMES[a[0]] + 's'}`;
+  return `${RANK_NAMES[hi[0]]}-${RANK_NAMES[lo[0]]}, ${a[1] === b[1] ? 'same suit' : 'different suits'}`;
+}
+
+function renderResult() {
+  const ready = state.cards.length === 2;
+  const n = state.players, fair = 100 / n;
+  $('over').textContent = `Chance to win at ${n} players`;
+  $('verdict').hidden = !ready;
+  $('barTick').style.left = `calc(${fair}% - 1px)`;
+  $('keyFair').textContent = `The line marks an even share: ${pc(fair)}`;
+
+  if (!ready) {
+    $('pct').textContent = '--';
+    $('compare').textContent = 'Pick two cards to see your chance.';
+    $('barWin').style.width = $('barTie').style.width = '0';
+    ['sWin', 'sTie', 'sLose', 'sRank'].forEach((id) => { $(id).textContent = '--'; });
+    $('handName').textContent = state.cards.length ? 'Pick one more card' : 'Pick two cards';
+    $('miniText').textContent = 'Pick two cards';
+    $('miniPct').textContent = '--';
+    return;
+  }
+
+  const [a, b] = state.cards;
+  const idx = handIndex(a, b), o = odds(idx, n);
+  const top = topShare(idx, n), ratio = o.share / fair;
+  $('pct').innerHTML = `${o.share.toFixed(1)}<small>%</small>`;
+  $('compare').textContent = ratio >= 1
+    ? `${ratio.toFixed(1)} times an even share of the pot.`
+    : `Less than an even share of the pot (${pc(fair)}).`;
+  $('barWin').style.width = o.win + '%';
+  $('barTie').style.width = o.tie + '%';
+  $('sWin').textContent = pc(o.win);
+  $('sTie').textContent = pc(o.tie);
+  $('sLose').textContent = pc(100 - o.win - o.tie);
+  $('sRank').textContent = 'Top ' + (top < 10 ? top.toFixed(1) : Math.round(top)) + '%';
+  $('handName').textContent = handName(a, b);
+  $('miniText').textContent = `${label(idx)}, ${n} players`;
+  $('miniPct').textContent = pc(o.share);
+
+  const mine = state.alreadyIn ? num('mine') : 0, others = num('others'), call = num('call');
+  const pot = mine + others;
+  $('vSunk').textContent = '';
+  if (call <= 0) {
+    $('vPill').textContent = 'Free';
+    $('vHead').textContent = 'Nothing to call';
+    $('vBody').textContent = 'You can stay in for free. Enter a cost to call to see whether a bet is worth paying.';
+    return;
+  }
+  const need = call / (pot + call) * 100;
+  const ev = o.share / 100 * (pot + call) - call;
+  const pays = o.share >= need;
+  $('vPill').textContent = pays ? 'Math says call' : 'Math says fold';
+  $('vHead').textContent = `You need ${pc(need)} to call`;
+  $('vBody').textContent = `You pay ${money(call)} to play for a pot of ${money(pot + call)}. `
+    + (ev >= 0 ? `Calling earns about ${money(ev)} per hand on average.` : `Calling loses about ${money(-ev)} per hand on average.`);
+  if (mine > 0) {
+    const without = call / (others + call) * 100;
+    $('vSunk').textContent = `Your ${money(mine)} already in lowers what you need from ${pc(without)}. It does not change your chance to win, and folding gives it up.`;
+  }
+}
+
+function renderDeck() {
+  document.querySelectorAll('.c').forEach((el) => {
+    el.setAttribute('aria-pressed', state.cards.includes(el.dataset.card));
+  });
+}
+
+function renderPlayers() {
+  document.querySelectorAll('.chip').forEach((el) => {
+    el.setAttribute('aria-pressed', Number(el.dataset.n) === state.players);
+  });
+}
+
+function renderChart() {
+  const n = state.players, fair = 100 / n;
+  const selected = state.cards.length === 2 ? handIndex(...state.cards) : -1;
+  let hi = 0, lo = 100;
+  for (let h = 0; h < 169; h++) { const s = odds(h, n).share; hi = Math.max(hi, s); lo = Math.min(lo, s); }
+  $('chartTitle').textContent = `All 169 starting hands at ${n} players`;
+  document.querySelectorAll('.g').forEach((el) => {
+    const idx = Number(el.dataset.idx), s = odds(idx, n).share;
+    const above = s >= fair;
+    const t = above ? (s - fair) / (hi - fair) : (fair - s) / (fair - lo);
+    const mix = Math.round(Math.pow(t, .6) * (above ? 100 : 50));
+    el.style.background = `color-mix(in oklab, var(${above ? '--hot' : '--cold'}) ${mix}%, var(--panel))`;
+    el.style.color = mix > 55 ? 'var(--on-heat)' : 'var(--ink)';
+    el.innerHTML = `${label(idx)}<small>${Math.round(s)}</small>`;
+    el.title = `${label(idx)}: ${pc(s)}`;
+    el.setAttribute('aria-label', `${label(idx)}, ${pc(s)}`);
+    el.setAttribute('aria-pressed', idx === selected);
+  });
+}
+
+function pickCard(card) {
+  const at = state.cards.indexOf(card);
+  if (at >= 0) state.cards.splice(at, 1);
+  else {
+    if (state.cards.length === 2) state.cards.shift();
+    state.cards.push(card);
+  }
+  afterHandChange();
+}
+
+function afterHandChange() {
+  $('handHint').hidden = true;
+  drawSlot(0, true); drawSlot(1, true);
+  renderDeck(); renderResult(); renderChart();
+}
+
+function build() {
+  const deck = $('deck');
+  for (const s of 'shdc') for (const r of RANKS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'c ' + SUITS[s].cls; b.dataset.card = r + s;
+    b.innerHTML = `${r === 'T' ? '10' : r}<span>${SUITS[s].sym}</span>`;
+    b.setAttribute('aria-label', `${RANK_NAMES[r]} of ${SUITS[s].name}`);
+    b.addEventListener('click', () => pickCard(r + s));
+    deck.append(b);
+  }
+  for (let n = 2; n <= 10; n++) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.dataset.n = n; b.textContent = n;
+    b.setAttribute('aria-label', `${n} players`);
+    b.addEventListener('click', () => { state.players = n; renderPlayers(); renderResult(); renderChart(); });
+    $('players').append(b);
+  }
+  const grid = $('grid');
+  for (let idx = 0; idx < 169; idx++) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'g'; b.dataset.idx = idx;
+    b.addEventListener('click', () => {
+      const i = Math.floor(idx / 13), j = idx % 13;
+      const hi = RANKS[Math.min(i, j)], lo = RANKS[Math.max(i, j)];
+      state.cards = i < j ? [hi + 's', lo + 's'] : [hi + 's', lo + 'h'];
+      afterHandChange();
+    });
+    grid.append(b);
+  }
+  const setIn = (yes) => {
+    state.alreadyIn = yes;
+    $('inYes').setAttribute('aria-pressed', yes);
+    $('inNo').setAttribute('aria-pressed', !yes);
+    $('mineField').hidden = !yes;
+    renderResult();
+  };
+  $('inYes').addEventListener('click', () => setIn(true));
+  $('inNo').addEventListener('click', () => setIn(false));
+  ['mine', 'others', 'call'].forEach((id) => $(id).addEventListener('input', renderResult));
+}
+
+build();
+drawSlot(0); drawSlot(1);
+renderDeck(); renderPlayers(); renderResult(); renderChart();
+</script>
